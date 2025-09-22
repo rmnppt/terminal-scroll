@@ -1,12 +1,13 @@
 [project]
-name = "textrpg"
+name = "terminal-scroll"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
-    "langgraph>=0.6.7",
-    "openai>=1.108.1",
-    "pydantic>=2.11.9",
-    "textual",
+  "langchain>=0.3.27",
+  "langgraph>=0.6.7",
+  "openai>=1.108.1",
+  "pydantic>=2.11.9",
+  "textual",
 ]

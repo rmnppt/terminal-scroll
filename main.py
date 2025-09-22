@@ -1,42 +1,12 @@
+from typing import Any, Dict, Union
 from textual.app import App, ComposeResult
 from textual.containers import Container
 from textual.screen import Screen
 from textual.widgets import Header, Static, Input, ListView, ListItem, Button
 from textual.message import Message
-from textual.css.query import NoMatches
-from pydantic import BaseModel
-from typing import Literal, Any, Dict, List
 from rich.text import Text
-
-
-CharacterClass = Literal["Valiant", "Mystic", "Shadow"]
-EnvironmentType = Literal["Forest", "Cave", "Castle"]
-
-
-class Item(BaseModel):
-    name: str
-    description: str
-    property: str
-
-
-class Character(BaseModel):
-    name: str
-    class_name: CharacterClass
-    backstory: str
-    strengths: list[str]
-    weaknesses: list[str]
-    items: List[Item]
-    feeling: str
-
-
-class Environment(BaseModel):
-    name: str
-    type: EnvironmentType
-
-
-class GameState(BaseModel):
-    character: Character | None = None
-    environment: Environment | None = None
+from data import Character, Environment, GameState
+from llm.llm_agent import generate_opening_scene
 
 
 class StateChanged(Message):
@@ -152,8 +122,7 @@ class SelectionScreen(BaseScreen):
         options: list[str],
         next_screen_callable,
         on_select,
-        details_data: Dict[str, Dict[str, Any]],
-        details_key_map: Dict[str, str],
+        data: Dict[str, Union[Environment, Character]],
         show_back_button: bool = False,
         **kwargs,
     ):
@@ -162,10 +131,9 @@ class SelectionScreen(BaseScreen):
         self._prompt = prompt
         self._options = options
         self._next_screen_callable = next_screen_callable
-        self.on_select = on_select
-        self.details_data = details_data
-        self.details_key_map = details_key_map
-        self.show_back_button = show_back_button
+        self._on_select = on_select
+        self._details_data = data
+        self._show_back_button = show_back_button
 
     def get_title(self) -> str:
         return self._title
@@ -175,7 +143,7 @@ class SelectionScreen(BaseScreen):
             with Container(id="options_container"):
                 yield Static(self._prompt, id="selection_prompt")
                 yield ListView()
-                if self.show_back_button:
+                if self._show_back_button:
                     yield Button("Back", id="back_button")
             yield Container(id="details_panel")
 
@@ -189,14 +157,17 @@ class SelectionScreen(BaseScreen):
             lv.focus()
 
     def update_details(self, item_name: str):
-        details = self.details_data.get(item_name)
+        details = self._details_data.get(item_name)
         panel = self.query_one("#details_panel")
         panel.remove_children()
         if details:
             widgets = []
-            for key, label in self.details_key_map.items():
-                value = details[key]
-                widgets.append(Static(f"{label}:", classes="detail-label"))
+            for field_name, field_info in details.model_fields.items():
+                value = getattr(details, field_name, None)
+                # Skip 'items' field for now, or handle it separately if needed
+                if field_name == "items":
+                    continue
+                widgets.append(Static(f"[b]{field_name.replace('_', ' ').title()}:[/b]", classes="detail-label"))
                 if isinstance(value, list):
                     for v in value:
                         widgets.append(Static(f"- {v}", classes="detail-value-list"))
@@ -214,7 +185,7 @@ class SelectionScreen(BaseScreen):
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         if event.item:
-            self.on_select(event.item.item_name)
+            self._on_select(event.item.item_name)
             if self._next_screen_callable:
                 self.app.push_screen(self._next_screen_callable())
 
@@ -239,11 +210,15 @@ class WelcomeScreen(Screen):
 
 
 class GameScreen(BaseScreen):
+    def __init__(self, opening_scene: str, **kwargs):
+        super().__init__(**kwargs)
+        self.opening_scene = opening_scene
+
     def get_title(self) -> str:
         return "textRPG"
 
     def compose_main(self) -> ComposeResult:
-        yield Static(id="echoed_text")
+        yield Static(self.opening_scene, id="echoed_text")
         with Container(id="input_container"):
             yield Static(">", id="prompt")
             yield Input(placeholder="What next...", id="input_field")
@@ -311,47 +286,13 @@ class GameApp(App):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        from llm.backstories import backstories
+        from llm.characters import characters
         from llm.environments import environments
-        from llm.items import items
 
         self.state = GameState()
 
-        character_definitions = [
-            {"name": "Kaelen", "class_name": "Valiant", "feeling": "heroic"},
-            {"name": "Elara", "class_name": "Mystic", "feeling": "peckish"},
-            {"name": "Silas", "class_name": "Shadow", "feeling": "conspicuous"},
-        ]
-
-        self.characters = []
-        for char_def in character_definitions:
-            full_name = f"{char_def['name']} the {char_def['class_name']}"
-            backstory_details = backstories[full_name]
-            item_details = items[full_name]
-            self.characters.append(
-                Character(
-                    name=char_def["name"],
-                    class_name=char_def["class_name"],
-                    backstory=backstory_details["backstory"],
-                    strengths=backstory_details["strengths"],
-                    weaknesses=backstory_details["weaknesses"],
-                    items=[
-                        Item(
-                            name=item_details["name"],
-                            description=item_details["description"],
-                            property=item_details["property"],
-                        )
-                    ],
-                    feeling=char_def["feeling"],
-                )
-            )
-
-        self.environments_data = environments
-        self.environments = [
-            Environment(name="The Forest of Unlikely Encounters", type="Forest"),
-            Environment(name="The Cave of Convenient Plot-Holes", type="Cave"),
-            Environment(name="The Castle of Mild Discomfort", type="Castle"),
-        ]
+        self.characters = [Character(**c) for c in characters]
+        self.environments = [Environment(**e) for e in environments]
 
     def on_mount(self) -> None:
         self.push_screen(WelcomeScreen())
@@ -381,51 +322,45 @@ class GameApp(App):
             self.update_state("environment", selected_environment)
 
     def create_character_selection_screen(self):
-        details_data = {}
-        for char in self.characters:
-            full_name = f"{char.name} the {char.class_name}"
-            details_data[full_name] = {
-                "backstory": char.backstory,
-                "strengths": char.strengths,
-                "weaknesses": char.weaknesses,
-                "starter_item": f"{char.items[0].name}: {char.items[0].description}",
-            }
-
+        options = [char.name + " the " + char.class_name for char in self.characters]
+        data = {char.name + " the " + char.class_name: char for char in self.characters}
         return SelectionScreen(
             title="Character Selection",
             prompt="Who are you?",
-            options=[
-                f"{char.name} the {char.class_name}" for char in self.characters
-            ],
+            options=options,
             next_screen_callable=self.create_environment_selection_screen,
             on_select=self.handle_character_selection,
-            details_data=details_data,
-            details_key_map={
-                "backstory": "Backstory",
-                "strengths": "Strengths",
-                "weaknesses": "Weaknesses",
-                "starter_item": "Starter Item",
-            },
+            data=data,
         )
 
     def create_environment_selection_screen(self):
+        options = [env.name for env in self.environments]
+        data = {env.name: env for env in self.environments}
         return SelectionScreen(
             title="Environment Selection",
             prompt="Where are you going?",
-            options=[env.name for env in self.environments],
+            options=options,
             next_screen_callable=self.create_game_screen,
             on_select=self.handle_environment_selection,
-            details_data=self.environments_data,
-            details_key_map={
-                "description": "Description",
-                "challenge": "Challenge",
-                "reward": "Reward",
-            },
+            data=data,
             show_back_button=True,
         )
 
     def create_game_screen(self):
-        return GameScreen()
+        # This is where the game actually starts
+        # Get the selected character and environment from self.state
+        selected_character = self.state.character
+        selected_environment = self.state.environment
+
+        if selected_character and selected_environment:
+            # Call the LLM to generate the scene
+            opening_scene = generate_opening_scene(
+                selected_character, selected_environment
+            )
+        else:
+            opening_scene = "Error: Character or environment not selected."
+
+        return GameScreen(opening_scene=opening_scene)
 
 
 if __name__ == "__main__":
