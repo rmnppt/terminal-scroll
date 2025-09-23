@@ -4,6 +4,7 @@ from textual.containers import Container
 from textual.screen import Screen
 from textual.widgets import Header, Static, Input, ListView, ListItem, Button
 from textual.message import Message
+from textual.css.query import NoMatches
 from rich.text import Text
 from data import Character, Environment, GameState
 from llm.llm_agent import generate_opening_scene
@@ -27,7 +28,7 @@ class BaseScreen(Screen):
         return ""
 
     def compose_main(self) -> ComposeResult:
-        pass
+        raise NotImplementedError
 
     def on_mount(self) -> None:
         self.update_state_display()
@@ -122,7 +123,7 @@ class SelectionScreen(BaseScreen):
         options: list[str],
         next_screen_callable,
         on_select,
-        data: Dict[str, Union[Environment, Character]],
+        data: Dict[str, Environment | Character],
         show_back_button: bool = False,
         **kwargs,
     ):
@@ -162,15 +163,26 @@ class SelectionScreen(BaseScreen):
         panel.remove_children()
         if details:
             widgets = []
-            for field_name, field_info in details.model_fields.items():
+            for field_name, _ in details.model_fields.items():
                 value = getattr(details, field_name, None)
                 # Skip 'items' field for now, or handle it separately if needed
-                if field_name == "items":
-                    continue
-                widgets.append(Static(f"[b]{field_name.replace('_', ' ').title()}:[/b]", classes="detail-label"))
+                # if field_name == "items":
+                #     continue
+                widgets.append(
+                    Static(
+                        f"[b]{field_name.replace('_', ' ').title()}:[/b]",
+                        classes="detail-label",
+                    )
+                )
                 if isinstance(value, list):
-                    for v in value:
-                        widgets.append(Static(f"- {v}", classes="detail-value-list"))
+                    if isinstance(value[0], str):
+                        for v in value:
+                            widgets.append(
+                                Static(f"- {v}", classes="detail-value-list")
+                            )
+                    # if isinstance(value[0], Item):
+                    #     item = value[0]
+
                 else:
                     widgets.append(Static(str(value), classes="detail-value"))
             panel.mount_all(widgets)
@@ -210,47 +222,86 @@ class WelcomeScreen(Screen):
 
 
 class GameScreen(BaseScreen):
-    def __init__(self, opening_scene: str, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.opening_scene = opening_scene
+        self.full_text = ""
 
     def get_title(self) -> str:
         return "textRPG"
 
-    def compose_main(self) -> ComposeResult:
-        yield Static(self.opening_scene, id="echoed_text")
+    def compose(self) -> ComposeResult:
+        yield Header(name=self.get_title())
+        with Container(id="screen_main_area"):
+            with Container(id="log_container"):
+                yield Static(id="echoed_text")
+            with Container(id="character_status_container"):
+                yield Static(id="character_status")
         with Container(id="input_container"):
             yield Static(">", id="prompt")
             yield Input(placeholder="What next...", id="input_field")
 
+    def on_mount(self) -> None:
+        super().on_mount()
+        self.run_worker(self.get_opening_scene, thread=True)
+
+    def get_opening_scene(self) -> None:
+        selected_character = self.app.state.character
+        selected_environment = self.app.state.environment
+
+        if selected_character and selected_environment:
+            for chunk in generate_opening_scene(
+                selected_character, selected_environment
+            ):
+                self.app.call_from_thread(self.append_text, chunk)
+        else:
+            error_message = "Error: Character or environment not selected."
+            self.app.call_from_thread(self.append_text, error_message)
+
+    def append_text(self, text_chunk: str) -> None:
+        self.full_text += text_chunk
+        text_widget = self.query_one("#echoed_text", Static)
+        text_widget.update(self.full_text)
+        scrollable_container = self.query_one("#log_container")
+        scrollable_container.scroll_end(animate=False)
+
     def on_input_changed(self, event: Input.Changed) -> None:
-        self.query_one("#echoed_text", Static).update(f"You wrote: {event.value}")
+        pass
 
 
 class GameApp(App):
     CSS = """
+
     WelcomeScreen {
         align: center middle;
     }
+    
     #welcome_container {
         text-align: center;
         width: 80%;
     }
+    
     #title {
         text-style: bold;
         margin-bottom: 2;
     }
+    
     #description {
         margin-bottom: 2;
     }
+    
     #screen_main_area {
         layout: horizontal;
         height: 1fr;
     }
 
-    #echoed_text {
+    #log_container {
         width: 1fr;
-        height: 100%;
+        overflow-y: auto;
+    }
+
+    #echoed_text {
+        padding: 1;
+        width: 100%;
     }
 
     #input_container {
@@ -276,7 +327,6 @@ class GameApp(App):
     }
 
     #character_status_container {
-        dock: right;
         width: 40;
         border: round white;
         layout: vertical;
@@ -348,19 +398,8 @@ class GameApp(App):
 
     def create_game_screen(self):
         # This is where the game actually starts
-        # Get the selected character and environment from self.state
-        selected_character = self.state.character
-        selected_environment = self.state.environment
-
-        if selected_character and selected_environment:
-            # Call the LLM to generate the scene
-            opening_scene = generate_opening_scene(
-                selected_character, selected_environment
-            )
-        else:
-            opening_scene = "Error: Character or environment not selected."
-
-        return GameScreen(opening_scene=opening_scene)
+        # The GameScreen will handle generating the scene on its own.
+        return GameScreen()
 
 
 if __name__ == "__main__":

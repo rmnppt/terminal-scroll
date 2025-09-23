@@ -1,0 +1,4 @@
+MD013: false
+MD029:
+  style: ordered
+  allow_extended_start_values: true

@@ -1,6 +1,5 @@
 import os
 from openai import OpenAI
-from typing import Dict, Any
 from langchain.prompts import (
     ChatPromptTemplate,
     HumanMessagePromptTemplate,
@@ -9,9 +8,9 @@ from langchain.prompts import (
 from data import Character, Environment
 
 
-def generate_opening_scene(character: Character, environment: Environment) -> str:
+def generate_opening_scene(character: Character, environment: Environment):
     """
-    Generates the opening scene of the game using OpenAI's LLM.
+    Generates the opening scene of the game using OpenAI's LLM, streaming the response.
     """
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
@@ -27,7 +26,8 @@ def generate_opening_scene(character: Character, environment: Environment) -> st
         "The scene should be vivid and engaging, hinting at the character's personality "
         "and the environment's quirks. "
         "Do not ask questions or offer choices in this initial scene. "
-        "Just describe the beginning of the adventure."
+        "Just describe the beginning of the adventure, making sure to complete your sentences."
+        "Write no more than 300 words or three paragraphs."
     )
 
     character_context_template = HumanMessagePromptTemplate.from_template(
@@ -75,20 +75,27 @@ def generate_opening_scene(character: Character, environment: Environment) -> st
     # Format the prompt
     formatted_prompt = chat_prompt.format_messages(**input_variables)
 
-    # Extract instructions and input for the Responses API
-    system_instructions = formatted_prompt[0].content  # System message
-    user_input = "\n\n".join(
-        [msg.content for msg in formatted_prompt[1:]]
-    )  # Combine user messages
+    # Convert to format for client.chat.completions.create
+    messages = []
+    for msg in formatted_prompt:
+        if msg.type == "system":
+            messages.append({"role": "system", "content": msg.content})
+        elif msg.type == "human":
+            messages.append({"role": "user", "content": msg.content})
+        elif msg.type == "ai":
+            messages.append({"role": "assistant", "content": msg.content})
 
     try:
-        response = client.responses.create(
+        stream = client.chat.completions.create(
             model="gpt-4o",
-            instructions=system_instructions,
-            input=user_input,
-            max_output_tokens=300,
+            messages=messages,
+            max_tokens=300,
             temperature=0.7,
+            stream=True,
         )
-        return response.output_text
+        for chunk in stream:
+            content = chunk.choices[0].delta.content
+            if content:
+                yield content
     except Exception as e:
-        return f"Error generating scene: {e}"
+        yield f"Error generating scene: {e}"

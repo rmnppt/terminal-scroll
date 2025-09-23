@@ -18,7 +18,7 @@ characters = [
                 "property": "Can be used once per 'adventure' to block an attack, but will loudly critique your fighting style afterwards.",
             }
         ],
-        "feeling": "herioc",
+        "feeling": "heroic",
     },
     {
         "name": "Elara",
@@ -50,7 +50,7 @@ characters = [
             "[bold]Expert Appraiser[/bold]: He has a remarkable eye for valuable objects and can instantly appraise anything from a silver locket to a slightly-used end table. He's not a thief, just an admirer of 'misplaced' treasures.",
         ],
         "weaknesses": [
-            "[bold]Chronic Over-narrating[/bold]: He has a habit of narrating his own actions in a low, gravelly whisper (e.g., [italic]\"And now, Silas slips past the guard, silent as a... well, a shadow...\"[/italic]). This has, on occasion, given his position away.",
+            '[bold]Chronic Over-narrating[/bold]: He has a habit of narrating his own actions in a low, gravelly whisper (e.g., [italic]"And now, Silas slips past the guard, silent as a... well, a shadow..."[/italic]). This has, on occasion, given his position away.',
             "[bold]A Penchant for Comfort[/bold]: He sees no reason why the life of a shadow should be uncomfortable. He will often pause a mission to find a comfortable chair or a well-brewed cup of tea.",
         ],
         "items": [
