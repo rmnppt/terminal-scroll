@@ -9,11 +9,6 @@ This document summarizes the technology choices for the procedural text-based RP
 - **Language: Python**
   - Chosen for its simplicity, rapid prototyping capabilities, and extensive ecosystem.
 
-- **TUI Framework: Textual**
-  - A powerful framework for building interactive and modern terminal applications.
-  - It's built on top of Rich and provides a full application model with widgets, layouts, and an animation system.
-  - We'll use it to manage the entire UI, from character display to input handling.
-
 - **Rendering Library: Rich**
   - Used by Textual for rendering.
   - Provides capabilities for beautiful output in the terminal, including colors, styles, tables, and support for the Unicode characters we'll use for sprites and animations (like dice rolls).
@@ -40,3 +35,4 @@ This document summarizes the technology choices for the procedural text-based RP
 - **CI/CD: GitHub Actions**
   - We will set up a workflow to automate testing and deployment.
   - When code is pushed to the main branch, GitHub Actions will automatically run tests and, if they pass, deploy the new version of the application to Fly.io using the `fly deploy` command.
+
