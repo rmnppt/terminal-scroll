@@ -8,10 +8,16 @@ from langchain.prompts import (
 from data import Character, Environment
 
 
-def generate_opening_scene(character: Character, environment: Environment):
+def generate_opening_scene(
+    character: Character, environment: Environment, fake_llm_call: bool = False
+):
     """
     Generates the opening scene of the game using OpenAI's LLM, streaming the response.
     """
+    if fake_llm_call:
+        yield "This is a faked opening scene for testing the dice mechanic."
+        return
+
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise ValueError("OPENAI_API_KEY environment variable not set.")
@@ -89,7 +95,7 @@ def generate_opening_scene(character: Character, environment: Environment):
         stream = client.chat.completions.create(
             model="gpt-4o",
             messages=messages,
-            max_tokens=300,
+            max_tokens=400,
             temperature=0.7,
             stream=True,
         )
