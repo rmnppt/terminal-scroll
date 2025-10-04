@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 
 
 class Item(BaseModel):
@@ -16,6 +16,7 @@ class Character(BaseModel):
     weaknesses: list[str] = [""]
     items: List[Item] = [Item()]
     feeling: str = ""
+    embarrassment: int = 0
 
 
 class Environment(BaseModel):
@@ -29,3 +30,6 @@ class Environment(BaseModel):
 class GameState(BaseModel):
     character: Character = Character()
     environment: Environment = Environment()
+    mission_description: Optional[str] = None
+    mission_summary: Optional[str] = None
+    game_over: bool = False
